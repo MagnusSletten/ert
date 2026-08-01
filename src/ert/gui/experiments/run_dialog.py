@@ -145,7 +145,6 @@ class FMStepOverview(QTableView):
         vertical_header = self.verticalHeader()
         assert vertical_header is not None
         vertical_header.setMinimumWidth(20)
-        self.setMinimumHeight(140)
         self.setMouseTracking(True)
 
     @Slot(int, int)
@@ -341,11 +340,16 @@ class RunDialog(QFrame):
         footer_widget_container = QWidget()
         footer_widget_container.setLayout(footer_layout)
 
+        progress_header_layout = QHBoxLayout()
+        progress_header_layout.setContentsMargins(0, 0, 0, 0)
+        progress_header_layout.addWidget(self._total_progress_label)
+        progress_header_layout.addStretch(1)
+        progress_header_layout.addWidget(self._iteration_progress_label)
+
         layout = QVBoxLayout()
         layout.addWidget(self._experiment_name_label)
-        layout.addWidget(self._total_progress_label)
+        layout.addLayout(progress_header_layout)
         layout.addWidget(self._total_progress_bar)
-        layout.addWidget(self._iteration_progress_label)
         layout.addWidget(self._progress_widget)
 
         adjustable_splitter_layout = QSplitter()
@@ -368,6 +372,9 @@ class RunDialog(QFrame):
         fm_step_frame_layout.addWidget(self._fm_step_overview)
 
         adjustable_splitter_layout.addWidget(self.fm_step_frame)
+        adjustable_splitter_layout.setCollapsible(1, False)
+        adjustable_splitter_layout.setSizes([1, 0])
+
         layout.addWidget(adjustable_splitter_layout)
         layout.addWidget(footer_widget_container)
 

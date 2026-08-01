@@ -7,11 +7,18 @@ from PyQt6.QtCore import (
     QModelIndex,
     QObject,
     QPoint,
+    QRect,
     QSize,
     Qt,
 )
 from PyQt6.QtCore import pyqtSignal as Signal
-from PyQt6.QtGui import QColor, QHelpEvent, QPainter, QPalette, QPen
+from PyQt6.QtGui import (
+    QColor,
+    QHelpEvent,
+    QPainter,
+    QPalette,
+    QPen,
+)
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QListView,
@@ -23,12 +30,14 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from ert.ensemble_evaluator import state
 from ert.gui.model.real_list import RealListModel
 from ert.gui.model.snapshot import (
     CallbackStatusMessageRole,
     FMStepColorHint,
     MemoryUsageRole,
     RealIens,
+    StatusRole,
 )
 from ert.shared.status.utils import byte_with_unit
 
@@ -40,7 +49,7 @@ class RealizationWidget(QWidget):
         super().__init__(parent)
 
         self._iter = it
-        self._delegate_size = QSize(90, 90)
+        self._delegate_size = QSize(70, 70)
 
         self._real_view = QListView(self)
         self._real_view.setViewMode(QListView.ViewMode.IconMode)
@@ -95,15 +104,18 @@ class RealizationWidget(QWidget):
 
 
 class RealizationDelegate(QStyledItemDelegate):
+    _DOT_DIAMETER = 30
+    _ARC_MARGIN = 4
+    _ARC_WIDTH = 3
+
     def __init__(self, size: QSize, parent: QObject) -> None:
         super().__init__(parent)
         self._size = size
         parent.installEventFilter(self)
-        self.adjustment_point_for_job_rect_margin = QPoint(-20, -20)
-        self._color_black = QColor(0, 0, 0, 180)
-        self._color_progress = QColor(50, 173, 230, 200)
-        self._color_lightgray = QColor("LightGray").lighter(120)
-        self._pen_black = QPen(self._color_black, 2, Qt.PenStyle.SolidLine)
+        self.adjustment_point_for_job_rect_margin = QPoint(-12, -12)
+        self._color_running = QColor(*state.COLOR_RUNNING)
+        self._color_track = QColor(0, 0, 0, 35)
+        self._pen_outline = QPen(QColor(0, 0, 0, 45), 1, Qt.PenStyle.SolidLine)
 
     @override
     def paint(
@@ -112,49 +124,55 @@ class RealizationDelegate(QStyledItemDelegate):
         if painter is None:
             return
         text = index.data(RealIens)
-        selected_color, finished_count, total_count = tuple(index.data(FMStepColorHint))
+        status_color, finished_count, total_count = tuple(index.data(FMStepColorHint))
 
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.TextAntialiasing, True)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
 
-        percentage_done = (
-            100 if total_count < 1 else int((finished_count * 100.0) / total_count)
-        )
-
-        painter.setPen(self._pen_black)
-        adjusted_rect = option.rect.adjusted(2, 2, -2, -2)
-
-        painter.setBrush(
-            self._color_progress if percentage_done == 100 else self._color_lightgray
-        )
-        painter.drawEllipse(adjusted_rect)
-
-        if 0 < percentage_done < 100:
-            painter.setBrush(self._color_progress)
-            painter.drawPie(adjusted_rect, 1440, -int(percentage_done * 57.6))
-
         if option.state & QStyle.StateFlag.State_Selected:
-            factor: int = (
-                125
-                if selected_color.lighter(125).getRgb() != (255, 255, 255, 255)
-                else 110
+            highlight = QColor(option.palette.color(QPalette.ColorRole.Highlight))
+            highlight.setAlpha(60)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(highlight)
+            painter.drawRoundedRect(option.rect.adjusted(2, 2, -2, -2), 6, 6)
+
+        dot = QRect(
+            option.rect.center().x() - self._DOT_DIAMETER // 2,
+            option.rect.top() + 8,
+            self._DOT_DIAMETER,
+            self._DOT_DIAMETER,
+        )
+
+        if status_color == self._color_running and total_count > 0:
+            arc = dot.adjusted(
+                -self._ARC_MARGIN,
+                -self._ARC_MARGIN,
+                self._ARC_MARGIN,
+                self._ARC_MARGIN,
             )
-            selected_color = selected_color.lighter(factor)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.setPen(QPen(self._color_track, self._ARC_WIDTH))
+            painter.drawEllipse(arc)
+            pen = QPen(status_color, self._ARC_WIDTH)
+            pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+            painter.setPen(pen)
+            painter.drawArc(arc, 90 * 16, -int(360 * 16 * finished_count / total_count))
 
-        painter.setBrush(selected_color)
-        adjusted_rect = option.rect.adjusted(7, 7, -7, -7)
-        painter.drawEllipse(adjusted_rect)
+        painter.setPen(self._pen_outline)
+        if index.data(StatusRole) == state.REALIZATION_STATE_WAITING:
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.setPen(QPen(status_color, 2))
+            painter.drawEllipse(dot.adjusted(1, 1, -1, -1))
+        else:
+            painter.setBrush(status_color)
+            painter.drawEllipse(dot)
 
-        font = painter.font()
-        font.setBold(True)
-        painter.setFont(font)
-
-        adj_rect = option.rect.adjusted(0, 20, 0, 0)
-        painter.drawText(adj_rect, Qt.AlignmentFlag.AlignHCenter, text)
-        adj_rect = option.rect.adjusted(0, 45, 0, 0)
+        painter.setPen(option.palette.color(QPalette.ColorRole.Text))
         painter.drawText(
-            adj_rect, Qt.AlignmentFlag.AlignHCenter, f"{finished_count} / {total_count}"
+            option.rect.adjusted(0, self._DOT_DIAMETER + 14, 0, 0),
+            Qt.AlignmentFlag.AlignHCenter,
+            text,
         )
 
         painter.restore()

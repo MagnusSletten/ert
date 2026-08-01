@@ -11,7 +11,11 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
-from ert.ensemble_evaluator.state import ENSEMBLE_STATE_FAILED, REAL_STATE_TO_COLOR
+from ert.ensemble_evaluator.state import (
+    ENSEMBLE_STATE_FAILED,
+    REAL_STATE_TO_COLOR,
+    REALIZATION_STATE_WAITING,
+)
 
 
 class ProgressWidget(QFrame):
@@ -21,7 +25,7 @@ class ProgressWidget(QFrame):
 
         self._vertical_layout = QVBoxLayout(self)
         self._vertical_layout.setContentsMargins(0, 0, 0, 0)
-        self._vertical_layout.setSpacing(0)
+        self._vertical_layout.setSpacing(2)
         self.setLayout(self._vertical_layout)
 
         self._waiting_progress_bar = QProgressBar(self)
@@ -39,17 +43,17 @@ class ProgressWidget(QFrame):
 
         self._legend_frame = QFrame(self)
         self._vertical_layout.addWidget(self._legend_frame)
-        self._legend_frame.setFixedHeight(30)
+        self._legend_frame.setFixedHeight(24)
         self._horizontal_legend_layout = QHBoxLayout(self._legend_frame)
         self._horizontal_legend_layout.setContentsMargins(0, 0, 0, 0)
-        self._horizontal_legend_layout.setSpacing(0)
+        self._horizontal_legend_layout.setSpacing(6)
 
         self._status: dict[str, int] = {}
         self._realization_count = 0
         self._progress_label_map: dict[str, QLabel] = {}
         self._legend_map_text = {}
 
-        for state, color in REAL_STATE_TO_COLOR.items():
+        for state, color in reversed(REAL_STATE_TO_COLOR.items()):
             label = QLabel(self)
             label.setVisible(False)
             label.setObjectName(f"progress_{state}")
@@ -57,18 +61,25 @@ class ProgressWidget(QFrame):
             self._progress_label_map[state] = label
             self._horizontal_layout.addWidget(label)
 
+        for state, color in REAL_STATE_TO_COLOR.items():
             label = QLabel(self)
-            label.setFixedSize(20, 20)
+            label.setFixedSize(14, 14)
             label.setStyleSheet(
-                f"background-color : {QColor(*color).name()}; border: 1px solid black;"
+                f"background-color : transparent; border-radius: 5px; "
+                f"border: 2px solid {QColor(*color).name()};"
+                if state == REALIZATION_STATE_WAITING
+                else f"background-color : {QColor(*color).name()}; border-radius: 5px;"
             )
             self._horizontal_legend_layout.addWidget(label)
 
             label = QLabel(self)
             label.setObjectName(f"progress_label_text_{state}")
-            label.setText(f" {state} ({0}/{0})")
+            label.setText(f"{state} ({0}/{0})")
             self._legend_map_text[state] = label
             self._horizontal_legend_layout.addWidget(label)
+            self._horizontal_legend_layout.addSpacing(16)
+
+        self._horizontal_legend_layout.addStretch()
 
     def repaint_components(self) -> None:
         if self._realization_count > 0:
@@ -83,7 +94,7 @@ class ProgressWidget(QFrame):
 
             for state, label in self._legend_map_text.items():
                 label.setText(
-                    f" {state} ({self._status.get(state, 0)}/{self._realization_count})"
+                    f"{state} ({self._status.get(state, 0)}/{self._realization_count})"
                 )
 
     def stop_waiting_progress_bar(self) -> None:
